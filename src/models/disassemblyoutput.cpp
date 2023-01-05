@@ -7,9 +7,13 @@
 */
 
 #include "disassemblyoutput.h"
+#include "../settings.h"
 #include "data.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QDirIterator>
+#include <QFileInfo>
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QRegularExpression>
@@ -66,6 +70,58 @@ DisassemblyOutput::LinkedFunction extractLinkedFunction(const QString& disassemb
         }
     }
     return function;
+}
+
+QString findInSubdirRecursive(const QString& path, const QString& filename)
+{
+    // find filename in path
+    // some distros (Ubuntu) use subdirs to store their debug files
+    QString filepath = path + QDir::separator() + filename;
+    if (QFileInfo::exists(filepath)) {
+        return filepath;
+    }
+
+    QDirIterator it(path, {filename}, QDir::NoFilter, QDirIterator::Subdirectories);
+    if (it.hasNext()) {
+        return it.next();
+    }
+
+    return {};
+}
+
+QString findBinaryForSymbol(const Data::Symbol& symbol)
+{
+    // file in .debug
+    if (QFileInfo::exists(symbol.actualPath)) {
+        return symbol.actualPath;
+    }
+
+    auto settings = Settings::instance();
+
+    auto findBinary = [](const QStringList& paths, const QString& binary) -> QString {
+        for (const auto& path : paths) {
+            auto result = findInSubdirRecursive(path, binary);
+            if (!result.isEmpty()) {
+                return result;
+            }
+        }
+        return {};
+    };
+
+    auto result = findBinary(settings->debugPaths().split(QLatin1Char(':')), symbol.binary);
+    if (!result.isEmpty())
+        return result;
+
+    result = findBinary(settings->extraLibPaths().split(QLatin1Char(':')), symbol.binary);
+    if (!result.isEmpty())
+        return result;
+
+    // disassemble the binary if no debug file was found
+    if (QFileInfo::exists(symbol.path)) {
+        return symbol.path;
+    }
+
+    return {};
 }
 }
 
@@ -188,7 +244,12 @@ DisassemblyOutput DisassemblyOutput::disassemble(const QString& objdump, const Q
     else
         qCInfo(disassemblyoutput) << "objdump binary does not support `--visualize-jumps`:" << processPath;
 
-    arguments.append(symbol.actualPath);
+    auto binary = findBinaryForSymbol(symbol);
+    if (binary.isEmpty()) {
+        disassemblyOutput.errorMessage += asmProcess.tr("Could not find %1").arg(symbol.binary);
+        return disassemblyOutput;
+    }
+    arguments.append(binary);
 
     asmProcess.start(objdump, arguments);
 

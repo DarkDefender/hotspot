@@ -18,6 +18,13 @@
 
 #include <data.h>
 #include <models/disassemblyoutput.h>
+#include <settings.h>
+
+inline QString findLib(const QString& name)
+{
+    QFileInfo lib(QCoreApplication::applicationDirPath() + QLatin1String("/../tests/modeltests/%1").arg(name));
+    return lib.canonicalFilePath();
+}
 
 class TestDisassemblyOutput : public QObject
 {
@@ -115,6 +122,47 @@ private slots:
         file->write(text.toUtf8());
 
         return file->fileName();
+    }
+
+    void testCustomDebugPath_data()
+    {
+        QTest::addColumn<QString>("searchPath");
+
+        QFileInfo lib = findLib(QStringLiteral("libfib.so"));
+        QVERIFY(lib.exists());
+
+        QTest::newRow("file in dir") << lib.absolutePath();
+        QDir parentDir(lib.dir().path() + QDir::separator() + QStringLiteral(".."));
+        QTest::newRow("find file in subdir") << parentDir.absolutePath();
+    }
+
+    void testCustomDebugPath()
+    {
+        const QString objdump = QStandardPaths::findExecutable(QStringLiteral("objdump"));
+
+        if (objdump.isEmpty()) {
+            QSKIP("objdump not found");
+        }
+
+        const Data::Symbol symbol = {QStringLiteral("fib(int)"), 4361, 67, QStringLiteral("libfib.so")};
+
+        auto result = DisassemblyOutput::disassemble(objdump, {}, symbol);
+
+        QVERIFY(!result.errorMessage.isEmpty());
+        QVERIFY(result.errorMessage.contains(QLatin1String("Could not find libfib.so")));
+
+        auto settings = Settings::instance();
+        QFETCH(QString, searchPath);
+
+        settings->setDebugPaths(searchPath);
+        result = DisassemblyOutput::disassemble(objdump, {}, symbol);
+        QVERIFY(result.errorMessage.isEmpty());
+        settings->setDebugPaths({});
+
+        settings->setExtraLibPaths(searchPath);
+        result = DisassemblyOutput::disassemble(objdump, {}, symbol);
+        QVERIFY(result.errorMessage.isEmpty());
+        settings->setExtraLibPaths({});
     }
 };
 
