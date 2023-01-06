@@ -17,12 +17,14 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
+#include <QShortcut>
 #include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QString>
 #include <QTemporaryFile>
 #include <QTextStream>
 
+#include <KColorScheme>
 #include <KRecursiveFilterProxyModel>
 
 #include "parsers/perf/perfparser.h"
@@ -171,6 +173,37 @@ ResultsDisassemblyPage::ResultsDisassemblyPage(CostContextMenu* costContextMenu,
         showDisassembly();
     });
 
+    auto searchShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(searchShortcut, &QShortcut::activated, this, [this] {
+        ui->searchWidget->setVisible(true);
+        ui->searchEdit->setFocus();
+    });
+
+    connect(ui->closeSearch, &QPushButton::pressed, this, [this] { ui->searchWidget->setVisible(false); });
+
+    connect(ui->nextSearchResult, &QPushButton::pressed, this, &ResultsDisassemblyPage::nextSearchResult);
+
+    connect(ui->prevSearchResult, &QPushButton::pressed, this, &ResultsDisassemblyPage::prevSearchResult);
+
+    connect(m_sourceCodeModel, &SourceCodeModel::searchResultFound, this, [this](const QModelIndex& index) {
+        m_searchResultIndex = index;
+        ui->sourceCodeView->scrollTo(m_searchResultIndex, QAbstractItemView::ScrollHint::PositionAtCenter);
+        ui->searchEdit->setPalette(QPalette());
+    });
+
+    // search if enter is pressed
+    connect(ui->searchEdit, &QLineEdit::returnPressed, ui->nextSearchResult, &QPushButton::pressed);
+
+    connect(m_sourceCodeModel, &SourceCodeModel::noSearchResult, this, [this] {
+        KColorScheme scheme;
+        auto palette = ui->searchEdit->palette();
+        palette.setBrush(QPalette::Text, scheme.foreground(KColorScheme::NegativeText));
+        ui->searchEdit->setPalette(palette);
+    });
+
+    // for keyboard navigation
+    ui->searchEdit->installEventFilter(this);
+
 #if KF5SyntaxHighlighting_FOUND
     QStringList schemes;
 
@@ -266,7 +299,11 @@ void ResultsDisassemblyPage::showDisassembly()
         return isArm ? QStringLiteral("arm-linux-gnueabi-objdump") : QStringLiteral("objdump");
     };
 
+    // hide search
+    ui->searchWidget->hide();
     ui->symbolNotFound->hide();
+    ui->searchEdit->clear();
+    m_searchResultIndex = {};
 
     showDisassembly(DisassemblyOutput::disassemble(objdump(), m_arch, curSymbol));
 }
