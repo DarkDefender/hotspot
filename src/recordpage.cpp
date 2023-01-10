@@ -82,6 +82,8 @@ KConfigGroup config()
 
 KConfigGroup applicationConfig(const QString& application)
 {
+    if (application.isEmpty())
+        return {};
     return config().group(QLatin1String("Application ") + KShell::tildeExpand(application));
 }
 
