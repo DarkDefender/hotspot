@@ -13,6 +13,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileDialog>
+#include <QKeyEvent>
 #include <QListWidgetItem>
 #include <QMenu>
 #include <QMessageBox>
@@ -373,4 +374,33 @@ void ResultsDisassemblyPage::setObjdump(const QString& objdump)
 void ResultsDisassemblyPage::setArch(const QString& arch)
 {
     m_arch = arch.trimmed().toLower();
+}
+
+bool ResultsDisassemblyPage::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj == ui->searchEdit && event->type() == QEvent::KeyPress) {
+        auto keyEvent = static_cast<QKeyEvent*>(event);
+
+        if (keyEvent->key() == Qt::Key_Escape) {
+            ui->searchWidget->hide();
+            return true;
+        } else if (keyEvent->key() == Qt::Key_F3 && keyEvent->modifiers() == Qt::Modifier::SHIFT) {
+            prevSearchResult();
+            return true;
+        } else if (keyEvent->key() == Qt::Key_F3) {
+            nextSearchResult();
+            return true;
+        }
+    }
+    return QObject::eventFilter(obj, event);
+}
+
+void ResultsDisassemblyPage::nextSearchResult()
+{
+    m_sourceCodeModel->findForward(ui->searchEdit->text(), m_searchResultIndex);
+}
+
+void ResultsDisassemblyPage::prevSearchResult()
+{
+    m_sourceCodeModel->findBackwards(ui->searchEdit->text(), m_searchResultIndex);
 }

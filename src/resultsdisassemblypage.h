@@ -61,6 +61,13 @@ signals:
     void navigateToCode(const QString& file, int lineNumber, int columnNumber);
     void stackChanged();
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
+private slots:
+    void nextSearchResult();
+    void prevSearchResult();
+
 private:
     void showDisassembly(const DisassemblyOutput& disassemblyOutput);
 
